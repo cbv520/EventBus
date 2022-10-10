@@ -3,6 +3,7 @@ import lombok.AllArgsConstructor;
 
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class EventBus {
 
@@ -16,8 +17,8 @@ public class EventBus {
     }
 
     public void publish(Event event) {
-        var subscribers = this.eventSubscribers.get(event.getClass());
-        if (subscribers != null && subscribers.size() > 0) {
+        var subscribers = getSubscribers(event.getClass());
+        if (subscribers.size() > 0) {
             var queue = this.queue.get();
             queue.offer(new EventDispatch(event, subscribers));
             if (!polling.get()) {
@@ -35,6 +36,31 @@ public class EventBus {
     public <T extends Event> void subscribe(Class<T> eventClass, Consumer<T> subscriber) {
         eventSubscribers.putIfAbsent(eventClass, new ArrayList<>());
         eventSubscribers.get(eventClass).add((Consumer<Event>) subscriber);
+    }
+
+    private List<Consumer<Event>> getSubscribers(Class<?> eventType) {
+        return getAllSuperClassesAndInterfaces(eventType).stream()
+                .map(eventSubscribers::get)
+                .filter(Objects::nonNull)
+                .flatMap(Collection::stream)
+                .collect(Collectors.toList());
+    }
+
+    public static Set<Class<?>> getAllSuperClassesAndInterfaces(Class<?> clazz) {
+        return getAllSuperClassesAndInterfaces(clazz, new LinkedHashSet<>());
+    }
+
+    private static Set<Class<?>> getAllSuperClassesAndInterfaces(Class<?> clazz, Set<Class<?>> classSet) {
+        while (clazz != null) {
+            classSet.add(clazz);
+            var interfaces = clazz.getInterfaces();
+            Collections.addAll(classSet, interfaces);
+            for (var directInterface : interfaces) {
+                getAllSuperClassesAndInterfaces(directInterface, classSet);
+            }
+            clazz = clazz.getSuperclass();
+        }
+        return classSet;
     }
 
     @AllArgsConstructor
